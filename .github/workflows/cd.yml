@@ -1,3 +1,4 @@
+
 name: Node.js Continuous Deployment
 
 on:
@@ -34,7 +35,8 @@ jobs:
             -x "node_modules/*" \
                ".git/*" \
                ".github/*" \
-               "coverage/*"
+               "coverage/*" \
+               "deploy.zip"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -50,22 +52,30 @@ jobs:
       - name: Upload deployment package
         run: |
           aws s3 cp deploy.zip \
-            s3://${{ vars.EB_S3_BUCKET }}/deploy-${{ github.sha }}.zip
+            s3://${{ vars.EB_S3_BUCKET }}/deploy-${GITHUB_SHA}.zip
 
       - name: Create Elastic Beanstalk application version
         run: |
+          VERSION_LABEL="build-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
           aws elasticbeanstalk create-application-version \
             --application-name "${{ vars.EB_APPLICATION_NAME }}" \
-            --version-label "build-${{ github.sha }}" \
-            --source-bundle S3Bucket="${{ vars.EB_S3_BUCKET }}",S3Key="deploy-${{ github.sha }}.zip"
+            --version-label "$VERSION_LABEL" \
+            --source-bundle \
+            S3Bucket="${{ vars.EB_S3_BUCKET }}",S3Key="deploy-${GITHUB_SHA}.zip"
 
-      - name: Deploy application
+          echo "VERSION_LABEL=$VERSION_LABEL" >> "$GITHUB_ENV"
+
+      - name: Deploy to Elastic Beanstalk
         run: |
           aws elasticbeanstalk update-environment \
+            --application-name "${{ vars.EB_APPLICATION_NAME }}" \
             --environment-name "${{ vars.EB_ENVIRONMENT_NAME }}" \
-            --version-label "build-${{ github.sha }}"
+            --version-label "$VERSION_LABEL"
 
       - name: Deployment summary
         run: |
           echo "Deployment submitted successfully."
           echo "Commit: ${{ github.sha }}"
+          echo "Version: $VERSION_LABEL"
+
